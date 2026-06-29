@@ -1,8 +1,13 @@
-rdflib
-pyld
-pandas
-numpy
-sqlalchemy
-psycopg2-binary
-pymongo
-python-dotenv
+# Smart Agriculture Semantic Module Requirements
+# Semantic web and RDF libraries
+rdflib>=6.3.0
+pyld>=1.0.5
+
+# Neo4j client
+neo4j>=5.15.0
+
+# Core dependencies
+python-dotenv>=1.0.0
+
+# Utilities
+requests>=2.31.0
