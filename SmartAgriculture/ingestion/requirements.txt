@@ -1,0 +1,8 @@
+paho-mqtt
+kafka-python
+psycopg2-binary
+sqlalchemy
+pymongo
+pandas
+numpy
+python-dotenv

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pymongo
+redis
+paho-mqtt
+python-dotenv
+requests

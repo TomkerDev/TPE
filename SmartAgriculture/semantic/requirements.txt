@@ -1,0 +1,8 @@
+rdflib
+pyld
+pandas
+numpy
+sqlalchemy
+psycopg2-binary
+pymongo
+python-dotenv
