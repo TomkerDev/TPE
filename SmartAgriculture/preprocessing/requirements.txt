@@ -1,5 +1,10 @@
-pandas
-numpy
-sqlalchemy
-psycopg2-binary
-python-dotenv
+# Smart Agriculture Preprocessing Requirements
+# Core dependencies
+python-dotenv>=1.0.0
+numpy>=1.24.0
+
+# Utilities
+requests>=2.31.0
+
+# Note: No additional heavy dependencies needed
+# All preprocessing uses standard library and numpy
