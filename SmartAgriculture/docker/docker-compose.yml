@@ -325,32 +325,12 @@ services:
       GF_USERS_ALLOW_SIGN_UP: false
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     networks:
       - smart-agri-network
     restart: unless-stopped
     depends_on:
       - postgres
       - timescaledb
-      - prometheus
-
-  # Prometheus for metrics collection
-  prometheus:
-    image: prom/prometheus:v2.47.0
-    container_name: smart-agri-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - smart-agri-network
-    restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
 
 volumes:
   postgres_data:
@@ -364,7 +344,6 @@ volumes:
   zookeeper_log:
   kafka_data:
   grafana_data:
-  prometheus_data:
 
 networks:
   smart-agri-network:
