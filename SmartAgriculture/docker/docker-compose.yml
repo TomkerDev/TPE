@@ -1,0 +1,262 @@
+version: '3.8'
+
+services:
+  # Mosquitto MQTT Broker for sensor data ingestion
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    container_name: smart-agri-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./init:/mosquitto/config/init
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    networks:
+      - smart-agri-network
+    restart: unless-stopped
+
+  # PostgreSQL database for structured data
+  postgres:
+    image: postgres:15.4
+    container_name: smart-agri-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartagri}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartagri123}
+      POSTGRES_DB: ${POSTGRES_DB:-smartagriculture}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - smart-agri-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartagri}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # TimescaleDB extension for time-series data
+  timescaledb:
+    image: timescale/timescaledb:2.11.2-pg15
+    container_name: smart-agri-timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartagri}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartagri123}
+      POSTGRES_DB: ${POSTGRES_DB:-smartagriculture}
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    networks:
+      - smart-agri-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # MongoDB for semi-structured and document data
+  mongodb:
+    image: mongo:7.0.4
+    container_name: smart-agri-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-smartagri}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-smartagri123}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-smartagriculture}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./init/mongodb-init.js:/docker-entrypoint-initdb.d/init.js
+    networks:
+      - smart-agri-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and message queuing
+  redis:
+    image: redis:7.2.3-alpine
+    container_name: smart-agri-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - smart-agri-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway and Backend Service
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: smart-agri-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@postgres:5432/${POSTGRES_DB:-smartagriculture}
+      - TIMESCALE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@timescaledb:5432/${POSTGRES_DB:-smartagriculture}
+      - MONGODB_URL=mongodb://${MONGO_USER:-smartagri}:${MONGO_PASSWORD:-smartagri123}@mongodb:27017/${MONGO_DB:-smartagriculture}
+      - REDIS_URL=redis://redis:6379/0
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+    volumes:
+      - ../data:/app/data
+      - ../models:/app/models
+    networks:
+      - smart-agri-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  # Data Ingestion Service
+  ingestion:
+    build:
+      context: ../ingestion
+      dockerfile: Dockerfile
+    container_name: smart-agri-ingestion
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@postgres:5432/${POSTGRES_DB:-smartagriculture}
+      - TIMESCALE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@timescaledb:5432/${POSTGRES_DB:-smartagriculture}
+      - MONGODB_URL=mongodb://${MONGO_USER:-smartagri}:${MONGO_PASSWORD:-smartagri123}@mongodb:27017/${MONGO_DB:-smartagriculture}
+    volumes:
+      - ../data/raw:/app/data/raw
+      - ../sensors:/app/sensors
+    networks:
+      - smart-agri-network
+    depends_on:
+      - mosquitto
+      - postgres
+      - timescaledb
+      - mongodb
+    restart: unless-stopped
+
+  # Data Preprocessing Service
+  preprocessing:
+    build:
+      context: ../preprocessing
+      dockerfile: Dockerfile
+    container_name: smart-agri-preprocessing
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@postgres:5432/${POSTGRES_DB:-smartagriculture}
+      - TIMESCALE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@timescaledb:5432/${POSTGRES_DB:-smartagriculture}
+    volumes:
+      - ../data/raw:/app/data/raw
+      - ../data/processed:/app/data/processed
+    networks:
+      - smart-agri-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_started
+    restart: unless-stopped
+
+  # Semantic Enrichment Service
+  semantic:
+    build:
+      context: ../semantic
+      dockerfile: Dockerfile
+    container_name: smart-agri-semantic
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@postgres:5432/${POSTGRES_DB:-smartagriculture}
+      - MONGODB_URL=mongodb://${MONGO_USER:-smartagri}:${MONGO_PASSWORD:-smartagri123}@mongodb:27017/${MONGO_DB:-smartagriculture}
+    volumes:
+      - ../data/processed:/app/data/processed
+      - ../data/results:/app/data/results
+    networks:
+      - smart-agri-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Analytics and ML Service
+  analytics:
+    build:
+      context: ../analytics
+      dockerfile: Dockerfile
+    container_name: smart-agri-analytics
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@postgres:5432/${POSTGRES_DB:-smartagriculture}
+      - TIMESCALE_URL=postgresql://${POSTGRES_USER:-smartagri}:${POSTGRES_PASSWORD:-smartagri123}@timescaledb:5432/${POSTGRES_DB:-smartagriculture}
+      - MONGODB_URL=mongodb://${MONGO_USER:-smartagri}:${MONGO_PASSWORD:-smartagri123}@mongodb:27017/${MONGO_DB:-smartagriculture}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ../data/processed:/app/data/processed
+      - ../data/models:/app/data/models
+      - ../data/results:/app/data/results
+    networks:
+      - smart-agri-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Dashboard Frontend
+  dashboard:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+    container_name: smart-agri-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://api:8000
+    volumes:
+      - ../data/results:/app/data/results
+    networks:
+      - smart-agri-network
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  timescale_data:
+  mongodb_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  smart-agri-network:
+    driver: bridge
