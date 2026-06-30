@@ -1,6 +1,33 @@
-streamlit
-plotly
-pandas
-numpy
-requests
-python-dotenv
+# Dashboard frameworks
+streamlit>=1.28.0
+dash>=2.11.0
+dash-bootstrap-components>=1.5.0
+
+# Visualization
+plotly>=5.17.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+pymongo>=4.6.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Real-time updates
+streamlit-autorefresh>=1.0.1
+
+# Maps
+folium>=0.15.0
+streamlit-folium>=0.15.0
+
+# Date/time handling
+python-dateutil>=2.8.2
+pytz>=2023.3
